@@ -1,8 +1,6 @@
-api_hash: your_api_hash
-api_id: your_api_id
-chat:
-- chat_id: telegram_chat_id
-  last_read_message_id: 0
+api_hash: 83af87a9638b6c36e50c6690982395d0
+api_id: 23262217
+bot_token: 8667855265:AAGXo4ncTAwb_5iKJghU3HULfrC-_LIPuBM
 file_formats:
   audio:
   - all
@@ -20,5 +18,33 @@ media_types:
 - document
 - voice
 - video_note
-# in linux please use /
-# save_path: E:\github\telegram_media_downloader
+- animation
+enable_download_txt: true
+message_db:
+  enable: true
+  adapter: mysql
+  db_path: /home/cjf/xhs_ai_publisher/telegram_media_downloader/metadata.db
+  mysql:
+    host: 172.25.80.1
+    port: 3308
+    user: cjf
+    password: '123456'
+    database: telegram_media_downloader
+    charset: utf8mb4
+    table_prefix: tdl_
+proxy:
+  scheme: socks5
+  hostname: 172.25.80.1
+  port: 10809
+save_path: /mnt/e/telegram_media_downloader
+language: EN
+filter_advertisement_list: []
+replace_advertisement_list: []
+group_add_advertisement: {}
+separator_filter:
+  '-1003557619963':
+    enable: true
+    only_when_media_group_empty: true
+    file_unique_ids:
+    - "AgADLAtrG3aMAVY"
+    empty_media_group_as_separator: false

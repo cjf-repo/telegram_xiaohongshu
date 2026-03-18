@@ -312,6 +312,11 @@ async def download_task(
 
     node.download_status[message.id] = download_status
 
+    try:
+        app.record_message_index(node.chat_id, message, download_status, file_name)
+    except Exception as e:
+        logger.warning(f"record message index failed: {e}")
+
     file_size = os.path.getsize(file_name) if file_name else 0
 
     await upload_telegram_chat(
@@ -643,7 +648,11 @@ async def stop_server(client: pyrogram.Client):
     """
     Stop the server using the provided client.
     """
-    await client.stop()
+    try:
+        await client.stop()
+    except ConnectionError:
+        # client may not be started if initialization fails early
+        pass
 
 
 def main():

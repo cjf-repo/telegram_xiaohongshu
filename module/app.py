@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Callable, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from loguru import logger
 from ruamel import yaml
@@ -16,6 +16,7 @@ from ruamel import yaml
 from module.cloud_drive import CloudDrive, CloudDriveConfig
 from module.filter import Filter
 from module.language import Language, set_language
+from module.message_index_db import MessageIndexDB, build_message_record
 from utils.format import replace_date_time, validate_title
 from utils.meta_data import MetaData
 
@@ -418,6 +419,12 @@ class Application:
         )
         self.group_add_advertisement: dict = {}
         self.forward_limit_call = LimitCall(max_limit_call_times=33)
+        self.enable_message_db: bool = True
+        self.message_db_adapter: str = "sqlite"
+        self.message_db_path: str = os.path.join(os.path.abspath("."), "metadata.db")
+        self.message_db_mysql_config: dict = {}
+        self.message_index_db: Optional[MessageIndexDB] = None
+        self.separator_filter: dict = {}
 
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
@@ -552,6 +559,29 @@ class Application:
             _config, "enable_download_txt", self.enable_download_txt, bool
         )
 
+        message_db = _config.get("message_db")
+        if message_db is not None:
+            self.enable_message_db = get_config(
+                message_db, "enable", self.enable_message_db, bool
+            )
+            self.message_db_adapter = get_config(
+                message_db, "adapter", self.message_db_adapter, str
+            ).lower()
+            self.message_db_path = get_config(
+                message_db, "db_path", self.message_db_path, str
+            )
+            self.message_db_mysql_config = get_config(
+                message_db, "mysql", self.message_db_mysql_config, dict, verbose=False
+            )
+
+        self.separator_filter = get_config(
+            _config,
+            "separator_filter",
+            self.separator_filter,
+            dict,
+            verbose=False,
+        )
+
         self.filter_advertisement_list = get_config(
             _config,
             "filter_advertisement_list",
@@ -599,6 +629,10 @@ class Application:
                     ].upload_telegram_chat_id = item.get(
                         "upload_telegram_chat_id", None
                     )
+                    if item.get("separator_filter"):
+                        self.separator_filter[str(item["chat_id"])] = item[
+                            "separator_filter"
+                        ]
         elif _config.get("chat_id"):
             # Compatible with lower versions
             self._chat_id = _config["chat_id"]
@@ -874,6 +908,13 @@ class Application:
 
         self.config["save_path"] = self.save_path
         self.config["file_path_prefix"] = self.file_path_prefix
+        self.config["message_db"] = {
+            "enable": self.enable_message_db,
+            "adapter": self.message_db_adapter,
+            "db_path": self.message_db_path,
+            "mysql": self.message_db_mysql_config,
+        }
+        self.config["separator_filter"] = self.separator_filter
 
         if self.config.get("ids_to_retry"):
             self.config.pop("ids_to_retry")
@@ -903,6 +944,138 @@ class Application:
         if immediate:
             with open(self.app_data_file, "w", encoding="utf-8") as yaml_file:
                 _yaml.dump(self.app_data, yaml_file)
+
+    def record_message_index(
+        self,
+        chat_id: Union[int, str],
+        message,
+        download_status: DownloadStatus,
+        file_name: Optional[str],
+    ):
+        """Record message/media mapping into message db."""
+        if not self.enable_message_db or not self.message_index_db:
+            return
+
+        saved_file_path = None
+        if file_name:
+            saved_file_path = os.path.abspath(file_name)
+
+        is_separator, separator_reason = self.detect_separator_message(chat_id, message)
+
+        record = build_message_record(
+            chat_id,
+            message,
+            download_status.name,
+            saved_file_path,
+            is_separator=1 if is_separator else 0,
+            separator_reason=separator_reason,
+        )
+        self.message_index_db.upsert_message(record)
+
+    @staticmethod
+    def _to_str_set(config: Dict[str, Any], key: str) -> set:
+        """Convert config list to str set."""
+        values = config.get(key, [])
+        if not isinstance(values, list):
+            return set()
+        return {str(it) for it in values if it is not None and str(it) != ""}
+
+    @staticmethod
+    def _to_int_set(config: Dict[str, Any], key: str) -> set:
+        """Convert config list to int set."""
+        values = config.get(key, [])
+        if not isinstance(values, list):
+            return set()
+
+        result = set()
+        for it in values:
+            try:
+                result.add(int(it))
+            except (TypeError, ValueError):
+                continue
+        return result
+
+    def _get_chat_separator_filter(self, chat_id: Union[int, str]) -> Optional[dict]:
+        """Get separator filter config of current chat."""
+        if not isinstance(self.separator_filter, dict):
+            return None
+
+        key = str(chat_id)
+        rule = self.separator_filter.get(key)
+        if not rule:
+            rule = self.separator_filter.get(chat_id)
+
+        if not isinstance(rule, dict):
+            return None
+        return rule
+
+    def detect_separator_message(
+        self, chat_id: Union[int, str], message
+    ) -> Tuple[bool, Optional[str]]:
+        """Detect if message is a separator media for current chat."""
+        rule = self._get_chat_separator_filter(chat_id)
+        if not rule:
+            return False, None
+
+        enable = get_config(rule, "enable", False, bool, verbose=False)
+        if not enable:
+            return False, None
+
+        if not getattr(message, "media", None):
+            return False, None
+
+        media_type = message.media.value
+        media_obj = getattr(message, media_type, None)
+        if media_obj is None:
+            return False, None
+
+        only_when_media_group_empty = get_config(
+            rule, "only_when_media_group_empty", False, bool, verbose=False
+        )
+        if only_when_media_group_empty and message.media_group_id:
+            return False, None
+
+        file_unique_ids = self._to_str_set(rule, "file_unique_ids")
+        file_ids = self._to_str_set(rule, "file_ids")
+        file_names = self._to_str_set(rule, "file_names")
+        mime_types = self._to_str_set(rule, "mime_types")
+        dimensions = self._to_str_set(rule, "dimensions")
+        file_sizes = self._to_int_set(rule, "file_sizes")
+
+        media_file_unique_id = getattr(media_obj, "file_unique_id", None)
+        if media_file_unique_id and str(media_file_unique_id) in file_unique_ids:
+            return True, f"file_unique_id:{media_file_unique_id}"
+
+        media_file_id = getattr(media_obj, "file_id", None)
+        if media_file_id and str(media_file_id) in file_ids:
+            return True, f"file_id:{media_file_id}"
+
+        media_file_name = getattr(media_obj, "file_name", None)
+        if media_file_name and str(media_file_name) in file_names:
+            return True, f"file_name:{media_file_name}"
+
+        media_mime_type = getattr(media_obj, "mime_type", None)
+        if media_mime_type and str(media_mime_type) in mime_types:
+            return True, f"mime_type:{media_mime_type}"
+
+        media_size = getattr(media_obj, "file_size", None)
+        if media_size is not None and int(media_size) in file_sizes:
+            return True, f"file_size:{media_size}"
+
+        width = getattr(media_obj, "width", None)
+        height = getattr(media_obj, "height", None)
+        if width and height:
+            dimension = f"{width}x{height}"
+            if dimension in dimensions:
+                return True, f"dimension:{dimension}"
+
+        empty_media_group_as_separator = get_config(
+            rule, "empty_media_group_as_separator", False, bool, verbose=False
+        )
+        if empty_media_group_as_separator and not message.media_group_id:
+            return True, "empty_media_group"
+
+        return False, None
 
     def set_language(self, language: Language):
         """Set Language"""
@@ -934,6 +1107,12 @@ class Application:
         self.cloud_drive_config.pre_run()
         if not os.path.exists(self.session_file_path):
             os.makedirs(self.session_file_path)
+        if self.enable_message_db:
+            self.message_index_db = MessageIndexDB(
+                adapter=self.message_db_adapter,
+                sqlite_db_path=self.message_db_path,
+                mysql_config=self.message_db_mysql_config,
+            )
         set_language(self.language)
 
     def is_match_advertisement(self, caption) -> bool:

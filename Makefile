@@ -3,8 +3,8 @@ TEST_ARTIFACTS ?= /tmp/coverage
 .PHONY: install dev_install static_type_check pylint style_check test
 
 install:
-	python3 -m pip install --upgrade pip setuptools
-	python3 -m pip install -r requirements.txt
+	/usr/local/python3.12/bin/python3.12 -m pip install --upgrade pip setuptools
+	/usr/local/python3.12/bin/python3.12 -m pip install -r requirements.txt
 
 dev_install: install
 	python3 -m pip install -r dev-requirements.txt
