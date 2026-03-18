@@ -59,6 +59,7 @@ class TaskType(Enum):
     Download = 1
     Forward = 2
     ListenForward = 3
+    ListenDownload = 4
 
 
 class QueryHandler(Enum):
@@ -67,6 +68,7 @@ class QueryHandler(Enum):
     StopDownload = 1
     StopForward = 2
     StopListenForward = 3
+    StopListenDownload = 4
 
 
 @dataclass
@@ -100,6 +102,7 @@ class QueryHandlerStr:
         QueryHandler.StopDownload.value: "stop_download",
         QueryHandler.StopForward.value: "stop_forward",
         QueryHandler.StopListenForward.value: "stop_listen_forward",
+        QueryHandler.StopListenDownload.value: "stop_listen_download",
     }
 
     @staticmethod
@@ -191,7 +194,7 @@ class TaskNode:
         """If is finish"""
         return self.is_stop_transmission or (
             self.is_running
-            and self.task_type != TaskType.ListenForward
+            and self.task_type not in (TaskType.ListenForward, TaskType.ListenDownload)
             and self.total_task == self.total_download_task
         )
 
@@ -425,6 +428,9 @@ class Application:
         self.message_db_mysql_config: dict = {}
         self.message_index_db: Optional[MessageIndexDB] = None
         self.separator_filter: dict = {}
+        self.listen_download_enable_all: bool = False
+        self.listen_download_interval: int = 20
+        self.listen_download_chat_ids: set = set()
 
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
@@ -574,6 +580,24 @@ class Application:
                 message_db, "mysql", self.message_db_mysql_config, dict, verbose=False
             )
 
+        listen_download = get_config(
+            _config,
+            "listen_download",
+            {},
+            dict,
+            verbose=False,
+        )
+        self.listen_download_enable_all = get_config(
+            listen_download, "enable", self.listen_download_enable_all, bool, False
+        )
+        self.listen_download_interval = get_config(
+            listen_download, "interval", self.listen_download_interval, int, False
+        )
+        listen_download_chat_ids = get_config(
+            listen_download, "chat_ids", [], list, False
+        )
+        self.listen_download_chat_ids = {str(it) for it in listen_download_chat_ids}
+
         self.separator_filter = get_config(
             _config,
             "separator_filter",
@@ -629,6 +653,8 @@ class Application:
                     ].upload_telegram_chat_id = item.get(
                         "upload_telegram_chat_id", None
                     )
+                    if item.get("listen_download"):
+                        self.listen_download_chat_ids.add(str(item["chat_id"]))
                     if item.get("separator_filter"):
                         self.separator_filter[str(item["chat_id"])] = item[
                             "separator_filter"
@@ -675,6 +701,10 @@ class Application:
             self.chat_download_config[key].download_filter = replace_date_time(
                 value.download_filter
             )
+
+        if self.listen_download_enable_all and not self.listen_download_chat_ids:
+            for key in self.chat_download_config.keys():
+                self.listen_download_chat_ids.add(str(key))
 
         return True
 
@@ -914,6 +944,12 @@ class Application:
             "db_path": self.message_db_path,
             "mysql": self.message_db_mysql_config,
         }
+        self.config["listen_download"] = {
+            "enable": self.listen_download_enable_all
+            or len(self.listen_download_chat_ids) > 0,
+            "interval": self.listen_download_interval,
+            "chat_ids": sorted(list(self.listen_download_chat_ids)),
+        }
         self.config["separator_filter"] = self.separator_filter
 
         if self.config.get("ids_to_retry"):
@@ -1076,6 +1112,10 @@ class Application:
             return True, "empty_media_group"
 
         return False, None
+
+    def is_listen_download_chat(self, chat_id: Union[int, str]) -> bool:
+        """Check if chat is enabled for listen-download."""
+        return str(chat_id) in self.listen_download_chat_ids
 
     def set_language(self, language: Language):
         """Set Language"""

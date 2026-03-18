@@ -16,6 +16,7 @@ import utils
 from module.app import (
     Application,
     ChatDownloadConfig,
+    DownloadStatus,
     ForwardStatus,
     QueryHandler,
     QueryHandlerStr,
@@ -53,6 +54,9 @@ class DownloadBot:
         self.download_chat_task: Callable = None
         self.app = None
         self.listen_forward_chat: dict = {}
+        self.listen_download_chat: dict = {}
+        self.listen_forward_last_message_ids: dict = {}
+        self.listen_download_last_message_ids: dict = {}
         self.config: dict = {}
         self._yaml = yaml.YAML()
         self.config_path = os.path.join(os.path.abspath("."), "bot.yaml")
@@ -130,7 +134,7 @@ class DownloadBot:
         """Update config from str."""
         self.config["download_filter"] = self.download_filter
 
-        with open("d", "w", encoding="utf-8") as yaml_file:
+        with open(self.config_path, "w", encoding="utf-8") as yaml_file:
             self._yaml.dump(self.config, yaml_file)
 
     async def start(
@@ -170,6 +174,12 @@ class DownloadBot:
                 "listen_forward",
                 _t(
                     "Listen forward, use the method to directly enter /listen_forward to view"
+                ),
+            ),
+            types.BotCommand(
+                "listen_download",
+                _t(
+                    "Listen download, use the method to directly enter /listen_download to view"
                 ),
             ),
             types.BotCommand(
@@ -243,6 +253,13 @@ class DownloadBot:
             MessageHandler(
                 set_listen_forward_msg,
                 filters=pyrogram.filters.command(["listen_forward"])
+                & pyrogram.filters.user(self.allowed_user_ids),
+            )
+        )
+        self.bot.add_handler(
+            MessageHandler(
+                set_listen_download_msg,
+                filters=pyrogram.filters.command(["listen_download"])
                 & pyrogram.filters.user(self.allowed_user_ids),
             )
         )
@@ -332,6 +349,10 @@ async def stop_download_bot():
     if _bot.reply_task:
         _bot.reply_task.cancel()
     _bot.stop_task("all")
+    _bot.listen_forward_chat.clear()
+    _bot.listen_download_chat.clear()
+    _bot.listen_forward_last_message_ids.clear()
+    _bot.listen_download_last_message_ids.clear()
     if _bot.bot:
         await _bot.bot.stop()
     if _bot.monitor_task:
@@ -390,6 +411,7 @@ async def send_help_str(client: pyrogram.Client, chat_id):
         f"/download - {_t('Download messages')}\n"
         f"/forward - {_t('Forward messages')}\n"
         f"/listen_forward - {_t('Listen for forwarded messages')}\n"
+        f"/listen_download - {_t('Listen for download messages')}\n"
         f"/forward_to_comments - {_t('Forward a specific media to a comment section')}\n"
         f"/set_language - {_t('Set language')}\n"
         f"/stop - {_t('Stop bot download or forward')}\n\n"
@@ -1299,29 +1321,99 @@ async def check_new_messages(
     return last_message_id
 
 
+async def check_new_download_messages(
+    client: pyrogram.Client, chat_id: int, node: TaskNode, last_message_id: int = 0
+):
+    """
+    Checks for new messages in the chat and queues download tasks.
+    """
+    try:
+        if last_message_id == 0:
+            async for message in get_chat_history_v2(  # type: ignore
+                client, chat_id, limit=1
+            ):
+                last_message_id = message.id
+                return last_message_id
+
+        async for message in get_chat_history_v2(  # type: ignore
+            client, chat_id, limit=100, offset_id=last_message_id, reverse=True
+        ):
+            if message.id <= last_message_id:
+                continue
+
+            need_download = True
+            if node.download_filter:
+                caption = message.caption
+                if caption:
+                    caption = validate_title(caption)
+                    _bot.app.set_caption_name(node.chat_id, message.media_group_id, caption)
+                    _bot.app.set_caption_entities(
+                        node.chat_id, message.media_group_id, message.caption_entities
+                    )
+                else:
+                    caption = _bot.app.get_caption_name(node.chat_id, message.media_group_id)
+
+                meta_data = MetaData()
+                set_meta_data(meta_data, message, caption)
+                _bot.filter.set_meta_data(meta_data)
+                need_download = _bot.filter.exec(node.download_filter)
+
+            if need_download:
+                await _bot.add_download_task(message, node)
+            else:
+                node.download_status[message.id] = DownloadStatus.SkipDownload
+
+            last_message_id = message.id
+    except Exception as e:
+        logger.exception(f"Error checking new download messages in chat {chat_id}: {e}")
+
+    return last_message_id
+
+
 async def start_message_monitor():
     """
     Starts monitoring all chats that need to be forwarded.
     Runs every 60 seconds to check for new messages.
     """
-    last_message_ids = {}  # 存储每个聊天的最后处理的消息ID
-
     while _bot.is_running:
         try:
-            for chat_id, node in _bot.listen_forward_chat.items():
+            for chat_id, node in _bot.listen_forward_chat.copy().items():
+                if node.is_stop_transmission:
+                    _bot.listen_forward_chat.pop(chat_id, None)
+                    _bot.listen_forward_last_message_ids.pop(chat_id, None)
+                    continue
+
                 if not node.is_running:
                     continue
 
-                last_id = last_message_ids.get(chat_id, 0)
+                last_id = _bot.listen_forward_last_message_ids.get(chat_id, 0)
                 new_last_id = await check_new_messages(
                     _bot.client, chat_id, node, last_id
                 )
-                last_message_ids[chat_id] = new_last_id
+                _bot.listen_forward_last_message_ids[chat_id] = new_last_id
+
+            for chat_id, node in _bot.listen_download_chat.copy().items():
+                if node.is_stop_transmission:
+                    _bot.listen_download_chat.pop(chat_id, None)
+                    _bot.listen_download_last_message_ids.pop(chat_id, None)
+                    continue
+
+                if not node.is_running:
+                    continue
+
+                last_id = _bot.listen_download_last_message_ids.get(chat_id, 0)
+                new_last_id = await check_new_download_messages(
+                    _bot.client, chat_id, node, last_id
+                )
+                _bot.listen_download_last_message_ids[chat_id] = new_last_id
 
         except Exception as e:
             logger.exception(f"Error in message monitor: {e}")
 
-        await asyncio.sleep(60)  # 每60秒检查一次
+        interval = 60
+        if _bot.listen_download_chat:
+            interval = max(_bot.app.listen_download_interval, 5)
+        await asyncio.sleep(interval)
 
 
 async def set_listen_forward_msg(
@@ -1366,6 +1458,84 @@ async def set_listen_forward_msg(
         _bot.monitor_task = _bot.app.loop.create_task(start_message_monitor())
 
 
+async def set_listen_download_msg(
+    client: pyrogram.Client, message: pyrogram.types.Message
+):
+    """
+    Set the chat to listen for download messages.
+    """
+    args = message.text.split(maxsplit=2)
+
+    if len(args) < 2:
+        await client.send_message(
+            message.from_user.id,
+            f"{_t('Invalid command format')}. {_t('Please use')} /listen_download "
+            f"https://t.me/c/src_chat [{_t('Filter')}]\n",
+        )
+        return
+
+    src_chat_link = args[1]
+    download_filter = args[2] if len(args) > 2 else None
+
+    if download_filter:
+        download_filter = replace_date_time(download_filter)
+        res, err = _bot.filter.check_filter(download_filter)
+        if not res:
+            await client.send_message(
+                message.from_user.id, err, reply_to_message_id=message.id
+            )
+            return
+
+    src_chat_id, _, _ = await parse_link(_bot.client, src_chat_link)
+    if not src_chat_id:
+        await client.send_message(
+            message.from_user.id,
+            _t("Invalid chat link"),
+            reply_to_message_id=message.id,
+        )
+        return
+
+    try:
+        src_chat = await _bot.client.get_chat(src_chat_id)
+    except Exception as e:
+        await client.send_message(
+            message.from_user.id,
+            f"{_t('Invalid chat link')} {e}",
+            reply_to_message_id=message.id,
+        )
+        return
+
+    last_reply_message = await client.send_message(
+        message.from_user.id,
+        "Listening download, please wait for new messages...",
+        reply_to_message_id=message.id,
+    )
+
+    node = TaskNode(
+        chat_id=src_chat.id,
+        from_user_id=message.from_user.id,
+        reply_message_id=last_reply_message.id,
+        replay_message=last_reply_message.text,
+        download_filter=download_filter,
+        bot=_bot.bot,
+        task_id=_bot.gen_task_id(),
+        task_type=TaskType.ListenDownload,
+    )
+
+    if node.chat_id in _bot.listen_download_chat:
+        _bot.remove_task_node(_bot.listen_download_chat[node.chat_id].task_id)
+
+    node.client = _bot.client
+    node.is_running = True
+
+    _bot.add_task_node(node)
+    _bot.listen_download_chat[node.chat_id] = node
+    _bot.listen_download_last_message_ids[node.chat_id] = 0
+
+    if not hasattr(_bot, "monitor_task") or _bot.monitor_task is None:
+        _bot.monitor_task = _bot.app.loop.create_task(start_message_monitor())
+
+
 async def stop(client: pyrogram.Client, message: pyrogram.types.Message):
     """Stops listening for forwarded messages."""
 
@@ -1385,6 +1555,11 @@ async def stop(client: pyrogram.Client, message: pyrogram.types.Message):
                 [  # Second row
                     InlineKeyboardButton(
                         _t("Stop Listen Forward"), callback_data="stop_listen_forward"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        _t("Stop Listen Download"), callback_data="stop_listen_download"
                     )
                 ],
             ]

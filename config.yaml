@@ -37,7 +37,7 @@ proxy:
   hostname: 172.25.80.1
   port: 10809
 save_path: /mnt/e/telegram_media_downloader
-language: EN
+language: ZH
 filter_advertisement_list: []
 replace_advertisement_list: []
 group_add_advertisement: {}
@@ -46,5 +46,5 @@ separator_filter:
     enable: true
     only_when_media_group_empty: true
     file_unique_ids:
-    - "AgADLAtrG3aMAVY"
+    - AgADLAtrG3aMAVY
     empty_media_group_as_separator: false

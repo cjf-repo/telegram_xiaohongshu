@@ -50,6 +50,11 @@ translations = {
         "Прослушивать пересланные сообщения",
         "Прослуховувати переслані повідомлення",
     ],
+    "Listen for download messages": [
+        "监听下载消息",
+        "Прослушивать сообщения для скачивания",
+        "Прослуховувати повідомлення для завантаження",
+    ],
     "Set language": ["设置语言", "Установить язык", "Встановити мову"],
     "**Note**: 1 means the start of the entire chat": [
         "**注意**: 1表示整个聊天的开始",
@@ -80,6 +85,11 @@ translations = {
         "监控转发，使用方法直接输入/listen_forward查看",
         "Слушать пересылку, введите /listen_forward для просмотра",
         "Слухати пересилання, введіть /listen_forward для перегляду",
+    ],
+    "Listen download, use the method to directly enter /listen_download to view": [
+        "监听下载，使用方法直接输入/listen_download查看",
+        "Слушать скачивание, введите /listen_download для просмотра",
+        "Слухати завантаження, введіть /listen_download для перегляду",
     ],
     "Add download filter, use the method to directly enter /add_filter to view": [
         "添加下载过滤器",
@@ -256,6 +266,11 @@ translations = {
         "停止机器人下载或转发",
         "Остановить загрузку или пересылку ботом",
         "Зупинити завантаження або пересилання ботом",
+    ],
+    "Stop Listen Download": [
+        "停止监听下载",
+        "Остановить прослушивание скачивания",
+        "Зупинити прослуховування завантаження",
     ],
     "Forward a specific media to a comment section": [
         "将特定媒体转发至评论",

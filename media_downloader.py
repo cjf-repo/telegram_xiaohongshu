@@ -47,6 +47,7 @@ app = Application(CONFIG_NAME, DATA_FILE_NAME, APPLICATION_NAME)
 
 queue: asyncio.Queue = asyncio.Queue()
 RETRY_TIME_OUT = 3
+LISTEN_DOWNLOAD_LAST_SEEN_ID: dict = {}
 
 logging.getLogger("pyrogram.session.session").addFilter(LogFilter())
 logging.getLogger("pyrogram.client").addFilter(LogFilter())
@@ -617,6 +618,70 @@ async def download_all_chat(client: pyrogram.Client):
             value.need_check = True
 
 
+async def check_new_download_messages(
+    client: pyrogram.Client,
+    chat_download_config: ChatDownloadConfig,
+):
+    """Check and queue new messages for listen-download."""
+    chat_id = chat_download_config.node.chat_id
+    last_seen_id = LISTEN_DOWNLOAD_LAST_SEEN_ID.get(
+        str(chat_id), chat_download_config.last_read_message_id
+    )
+
+    async for message in get_chat_history_v2(  # type: ignore
+        client,
+        chat_id,
+        limit=100,
+        offset_id=last_seen_id,
+        reverse=True,
+    ):
+        if message.id <= last_seen_id:
+            continue
+
+        last_seen_id = message.id
+
+        meta_data = MetaData()
+        caption = message.caption
+        if caption:
+            caption = validate_title(caption)
+            app.set_caption_name(chat_id, message.media_group_id, caption)
+            app.set_caption_entities(chat_id, message.media_group_id, message.caption_entities)
+        else:
+            caption = app.get_caption_name(chat_id, message.media_group_id)
+
+        set_meta_data(meta_data, message, caption)
+
+        if app.exec_filter(chat_download_config, meta_data):
+            await add_download_task(message, chat_download_config.node)
+            chat_download_config.total_task = chat_download_config.node.total_task
+        else:
+            chat_download_config.node.download_status[message.id] = DownloadStatus.SkipDownload
+
+    LISTEN_DOWNLOAD_LAST_SEEN_ID[str(chat_id)] = last_seen_id
+
+
+async def start_listen_download_monitor(client: pyrogram.Client):
+    """Start monitor for chats configured with listen-download."""
+    while app.is_running:
+        try:
+            for chat_id, chat_download_config in app.chat_download_config.items():
+                if not app.is_listen_download_chat(chat_id):
+                    continue
+
+                if not chat_download_config.node or chat_download_config.node.chat_id != chat_id:
+                    chat_download_config.node = TaskNode(chat_id=chat_id)
+
+                chat_download_config.node.is_running = True
+                chat_download_config.need_check = True
+                chat_download_config.total_task = chat_download_config.node.total_task
+
+                await check_new_download_messages(client, chat_download_config)
+        except Exception as e:
+            logger.warning(f"listen download monitor error: {e}")
+
+        await asyncio.sleep(max(app.listen_download_interval, 5))
+
+
 async def run_until_all_task_finish():
     """Normal download"""
     while True:
@@ -625,7 +690,8 @@ async def run_until_all_task_finish():
             if not value.need_check or value.total_task != value.finish_task:
                 finish = False
 
-        if (not app.bot_token and finish) or app.restart_program:
+        has_listen_download_chat = len(app.listen_download_chat_ids) > 0
+        if (not app.bot_token and finish and not has_listen_download_chat) or app.restart_program:
             break
 
         await asyncio.sleep(1)
@@ -677,6 +743,9 @@ def main():
         logger.success(_t("Successfully started (Press Ctrl+C to stop)"))
 
         app.loop.create_task(download_all_chat(client))
+        if app.listen_download_chat_ids:
+            task = app.loop.create_task(start_listen_download_monitor(client))
+            tasks.append(task)
         for _ in range(app.max_download_task):
             task = app.loop.create_task(worker(client))
             tasks.append(task)

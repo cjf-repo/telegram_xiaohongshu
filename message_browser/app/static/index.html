@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Message Browser</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>消息图文浏览器</h1>
+      <p>独立项目：从 MySQL/SQLite 读取图文索引并按分组展示</p>
+    </header>
+
+    <main class="container">
+      <section class="panel">
+        <form id="filterForm" class="filters">
+          <label>
+            群组
+            <select id="chatId">
+              <option value="">全部</option>
+            </select>
+          </label>
+
+          <label>
+            关键词
+            <input id="keyword" type="text" placeholder="搜文本/标题/文件名" />
+          </label>
+
+          <label>
+            message_id
+            <input id="messageId" type="number" placeholder="按消息ID精确查组" />
+          </label>
+
+          <label>
+            类型
+            <select id="hasMedia">
+              <option value="all">全部</option>
+              <option value="media">仅媒体</option>
+              <option value="text">仅文本</option>
+            </select>
+          </label>
+
+          <label>
+            开始日期
+            <input id="dateFrom" type="date" />
+          </label>
+
+          <label>
+            结束日期
+            <input id="dateTo" type="date" />
+          </label>
+
+          <label class="checkbox">
+            <input id="includeSeparator" type="checkbox" />
+            包含分隔图
+          </label>
+
+          <button type="submit" id="searchBtn">查询</button>
+        </form>
+      </section>
+
+      <section class="panel info" id="summary"></section>
+      <section id="result" class="result"></section>
+
+      <section class="panel pager">
+        <button id="prevPage">上一页</button>
+        <span id="pageInfo">第 1 页</span>
+        <button id="nextPage">下一页</button>
+      </section>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
