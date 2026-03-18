@@ -369,42 +369,46 @@ class PlaywrightXHSPublisher:
         return clicked
 
     def _ensure_publish_editor(self, page, media_paths: List[str], target_kind: str) -> bool:
-        """Enter editor with low-refresh strategy."""
+        """Enter editor with low-refresh and low-reload strategy."""
+
         def _try_switch_once(wait_ms: int, include_generic: bool = False) -> bool:
             self._dismiss_overlays(page)
-            self._switch_publish_kind(page, target_kind, include_generic=include_generic)
+            clicked = self._switch_publish_kind(page, target_kind, include_generic=include_generic)
+            if not clicked and not include_generic:
+                return False
             return self._wait_matching_input(page, media_paths, target_kind, wait_ms)
+
+        def _is_publish_like_url() -> bool:
+            try:
+                url = (page.url or "").lower()
+            except Exception:
+                return False
+            return "creator.xiaohongshu.com/publish" in url
 
         # 1) 先在当前页尝试，不跳转
         if self._has_matching_input(page, media_paths, target_kind):
             return True
 
-        # 2) 当前页切换一次
-        if _try_switch_once(7000, include_generic=False):
-            return True
-
-        # 3) 当前页 reload 后再试一次（解决首次/二次进入状态不同问题）
-        try:
-            page.reload(wait_until="domcontentloaded", timeout=self.wait_timeout_ms)
-        except Exception:
-            pass
-        if self._has_matching_input(page, media_paths, target_kind):
-            return True
+        # 2) 当前页精确切换（不使用通用入口）
         if _try_switch_once(8000, include_generic=False):
             return True
 
-        # 4) 重新 goto 配置的发布页再试
-        try:
-            page.goto(self.creator_url, wait_until="domcontentloaded", timeout=self.wait_timeout_ms)
-        except Exception:
-            pass
+        # 3) 当前页再试一次（仍然不刷新）
+        if _try_switch_once(7000, include_generic=False):
+            return True
 
+        # 4) 如当前不在发布页，先跳转配置的发布页；在发布页则不跳转
+        if not _is_publish_like_url():
+            try:
+                page.goto(self.creator_url, wait_until="domcontentloaded", timeout=self.wait_timeout_ms)
+            except Exception:
+                pass
         if self._has_matching_input(page, media_paths, target_kind):
             return True
         if _try_switch_once(9000, include_generic=False):
             return True
 
-        # 5) 跳转标准路径 + 允许通用入口兜底
+        # 5) 标准发布地址 + 通用入口兜底
         try:
             page.goto(
                 "https://creator.xiaohongshu.com/publish/publish",
@@ -418,7 +422,17 @@ class PlaywrightXHSPublisher:
         if _try_switch_once(10000, include_generic=True):
             return True
 
-        # 6) 手动兜底：等待用户手动点“图文/视频”后继续
+        # 6) 最后才使用 reload（减少你看到的首屏刷新）
+        try:
+            page.reload(wait_until="domcontentloaded", timeout=self.wait_timeout_ms)
+        except Exception:
+            pass
+        if self._has_matching_input(page, media_paths, target_kind):
+            return True
+        if _try_switch_once(10000, include_generic=True):
+            return True
+
+        # 7) 手动兜底：等待用户手动点“图文/视频”后继续
         if self._wait_matching_input(page, media_paths, target_kind, 30000):
             return True
         return False

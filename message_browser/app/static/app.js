@@ -361,6 +361,8 @@ els.result.addEventListener("change", (event) => {
 els.clearSelectedBtn.addEventListener("click", () => {
   state.selectedGroupKeys.clear();
   updateSelectedInfo();
+  renderPublishPreview(null);
+  els.summary.textContent = "已清空选择和预览";
   const checkboxes = els.result.querySelectorAll(".group-select");
   for (const checkbox of checkboxes) {
     checkbox.checked = false;
