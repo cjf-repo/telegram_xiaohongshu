@@ -3,6 +3,7 @@ const state = {
   pageSize: 20,
   totalPages: 1,
   total: 0,
+  selectedGroupKeys: new Set(),
 };
 
 const els = {
@@ -19,6 +20,16 @@ const els = {
   prevPage: document.getElementById("prevPage"),
   nextPage: document.getElementById("nextPage"),
   pageInfo: document.getElementById("pageInfo"),
+  productUrl: document.getElementById("productUrl"),
+  publishTitle: document.getElementById("publishTitle"),
+  publishIncludeSeparator: document.getElementById("publishIncludeSeparator"),
+  selectedInfo: document.getElementById("selectedInfo"),
+  previewPublishBtn: document.getElementById("previewPublishBtn"),
+  publishBtn: document.getElementById("publishBtn"),
+  clearSelectedBtn: document.getElementById("clearSelectedBtn"),
+  publishPreviewBody: document.getElementById("publishPreviewBody"),
+  xhsStatus: document.getElementById("xhsStatus"),
+  checkXhsBtn: document.getElementById("checkXhsBtn"),
 };
 
 function escapeHtml(text) {
@@ -34,6 +45,41 @@ function escapeHtml(text) {
 function truncate(text, max = 180) {
   if (!text) return "";
   return text.length > max ? `${text.slice(0, max)}...` : text;
+}
+
+function isValidHttpUrl(text) {
+  try {
+    const u = new URL(text);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function makeGroupKey(chatId, anchorMessageId) {
+  return `${chatId}::${anchorMessageId}`;
+}
+
+function parseGroupKey(key) {
+  const idx = key.lastIndexOf("::");
+  if (idx < 0) return null;
+  const chatId = key.slice(0, idx);
+  const anchorMessageId = Number(key.slice(idx + 2));
+  if (!chatId || Number.isNaN(anchorMessageId)) return null;
+  return { chat_id: chatId, anchor_message_id: anchorMessageId };
+}
+
+function selectedGroupList() {
+  const result = [];
+  for (const key of state.selectedGroupKeys) {
+    const parsed = parseGroupKey(key);
+    if (parsed) result.push(parsed);
+  }
+  return result;
+}
+
+function updateSelectedInfo() {
+  els.selectedInfo.textContent = `已选分组: ${state.selectedGroupKeys.size}`;
 }
 
 function buildQuery() {
@@ -62,6 +108,21 @@ async function loadChats() {
   }
 }
 
+async function checkXhsStatus() {
+  els.xhsStatus.textContent = "XHS状态: 检查中...";
+  try {
+    const res = await fetch("/api/xhs/status");
+    const data = await res.json();
+    const mode = data.mode || "-";
+    const ok = !!data.ok;
+    const message = data.message || "-";
+    const loginCommand = data.login_command ? `，登录命令: ${data.login_command}` : "";
+    els.xhsStatus.textContent = `XHS状态(${mode}): ${ok ? "就绪" : "未就绪"} - ${message}${loginCommand}`;
+  } catch (err) {
+    els.xhsStatus.textContent = `XHS状态: 检查失败 - ${err.message || err}`;
+  }
+}
+
 function mediaPreview(item) {
   if (!item.saved_file_path) {
     return `<div class="media-meta">未保存本地文件</div>`;
@@ -79,6 +140,47 @@ function mediaPreview(item) {
   return `<a target="_blank" href="${mediaUrl}">打开文件</a>`;
 }
 
+function renderPublishPreview(payload) {
+  if (!payload) {
+    els.publishPreviewBody.innerHTML = '<div class="empty-text">尚未生成预览</div>';
+    return;
+  }
+
+  const title = escapeHtml(payload.title || "-");
+  const description = escapeHtml(truncate(payload.description || "", 1200));
+  const assets = Array.isArray(payload.media_assets) ? payload.media_assets : [];
+  const mediaHtml = assets.map((asset) => {
+    const path = asset.saved_file_path || "";
+    const encoded = encodeURIComponent(path);
+    const mediaUrl = `/api/media?path=${encoded}`;
+    const mediaType = (asset.media_type || "").toLowerCase();
+    const preview = mediaType === "video"
+      ? `<video controls preload="metadata" src="${mediaUrl}"></video>`
+      : `<img loading="lazy" src="${mediaUrl}" alt="preview" />`;
+    return `
+      <article class="publish-preview-item">
+        ${preview}
+        <div class="publish-preview-meta">
+          <div>msg_id: ${asset.message_id || "-"}</div>
+          <div>${escapeHtml(asset.original_file_name || "")}</div>
+        </div>
+      </article>
+    `;
+  }).join("");
+
+  els.publishPreviewBody.innerHTML = `
+    <p class="publish-preview-title">${title}</p>
+    <p class="publish-preview-desc">${description || "<span class='empty-text'>无描述</span>"}</p>
+    <p class="group-msg-ids">
+      <strong>统计:</strong>
+      分组 ${payload.group_count || 0}，
+      消息 ${payload.message_id_count || 0}，
+      媒体 ${payload.media_count || 0}
+    </p>
+    <div class="publish-preview-grid">${mediaHtml || '<div class="empty-text">无媒体</div>'}</div>
+  `;
+}
+
 function renderGroups(items) {
   if (!items || items.length === 0) {
     els.result.innerHTML = '<section class="panel empty-text">暂无数据</section>';
@@ -87,6 +189,9 @@ function renderGroups(items) {
 
   const html = items
     .map((group) => {
+      const key = makeGroupKey(String(group.chat_id), Number(group.anchor_message_id));
+      const encodedKey = encodeURIComponent(key);
+      const checked = state.selectedGroupKeys.has(key) ? "checked" : "";
       const head = `
         <div class="group-head">
           <span><strong>chat_id:</strong> ${escapeHtml(String(group.chat_id))}</span>
@@ -99,6 +204,10 @@ function renderGroups(items) {
           <span><strong>text:</strong> ${group.text_messages.length}</span>
           <span><strong>media:</strong> ${group.media_items.length}</span>
           <span><strong>separator:</strong> ${group.separator_count || 0}</span>
+          <label class="group-select-label">
+            <input class="group-select" type="checkbox" data-key="${encodedKey}" ${checked} />
+            选中上架
+          </label>
         </div>
       `;
 
@@ -150,6 +259,7 @@ function renderGroups(items) {
     .join("");
 
   els.result.innerHTML = html;
+  updateSelectedInfo();
 }
 
 function updatePager() {
@@ -174,6 +284,48 @@ async function search() {
   updatePager();
 }
 
+async function requestPublish(apiPath) {
+  const groups = selectedGroupList();
+  if (groups.length === 0) {
+    els.summary.textContent = "请先勾选至少一个分组";
+    alert("请先勾选至少一个分组");
+    return;
+  }
+  const productUrl = (els.productUrl.value || "").trim();
+  if (productUrl && !isValidHttpUrl(productUrl)) {
+    els.summary.textContent = "商品链接格式错误，请使用 http/https 完整链接";
+    alert("商品链接格式错误，请使用 http/https 完整链接");
+    return;
+  }
+  const body = {
+    groups,
+    product_url: productUrl || null,
+    title: (els.publishTitle.value || "").trim() || null,
+    include_separator: !!els.publishIncludeSeparator.checked,
+  };
+
+  const res = await fetch(apiPath, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const raw = await res.text();
+  let data = {};
+  try {
+    data = raw ? JSON.parse(raw) : {};
+  } catch {
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${raw.slice(0, 300) || "返回非JSON"}`);
+    }
+    data = {};
+  }
+  if (!res.ok) {
+    const detail = (data && data.detail) || "请求失败";
+    throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+  }
+  return data;
+}
+
 els.filterForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   state.page = 1;
@@ -192,8 +344,76 @@ els.nextPage.addEventListener("click", async () => {
   await search();
 });
 
+els.result.addEventListener("change", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement)) return;
+  if (!target.classList.contains("group-select")) return;
+  const encoded = target.dataset.key || "";
+  const key = decodeURIComponent(encoded);
+  if (target.checked) {
+    state.selectedGroupKeys.add(key);
+  } else {
+    state.selectedGroupKeys.delete(key);
+  }
+  updateSelectedInfo();
+});
+
+els.clearSelectedBtn.addEventListener("click", () => {
+  state.selectedGroupKeys.clear();
+  updateSelectedInfo();
+  const checkboxes = els.result.querySelectorAll(".group-select");
+  for (const checkbox of checkboxes) {
+    checkbox.checked = false;
+  }
+});
+
+els.previewPublishBtn.addEventListener("click", async () => {
+  els.summary.textContent = "正在生成融合预览...";
+  try {
+    const data = await requestPublish("/api/xhs/publish/preview");
+    if (!data) return;
+    const payload = data.payload || {};
+    els.summary.textContent = `预览完成：分组 ${payload.group_count || 0}，消息 ${payload.message_id_count || 0}，媒体 ${payload.media_count || 0}，标题: ${payload.title || "-"}`;
+    renderPublishPreview(payload);
+  } catch (err) {
+    console.error(err);
+    els.summary.textContent = `预览失败: ${err.message || err}`;
+    renderPublishPreview(null);
+    alert(`预览失败: ${err.message}`);
+  }
+});
+
+els.publishBtn.addEventListener("click", async () => {
+  els.summary.textContent = "正在提交上架...";
+  try {
+    const data = await requestPublish("/api/xhs/publish");
+    if (!data) return;
+    const summary = data.summary || {};
+    els.summary.textContent = `上架已提交：分组 ${summary.group_count || 0}，消息 ${summary.message_id_count || 0}，媒体 ${summary.media_count || 0}，标题: ${summary.title || "-"}`;
+    const result = data.publish_result || {};
+    if (result.saved_file) {
+      alert(`已生成上架文件: ${result.saved_file}`);
+    } else if (result.note_url) {
+      alert(`发布成功: ${result.note_url}`);
+    } else {
+      alert("上架请求已发送");
+    }
+  } catch (err) {
+    console.error(err);
+    els.summary.textContent = `上架失败: ${err.message || err}`;
+    alert(`上架失败: ${err.message}`);
+  }
+});
+
+els.checkXhsBtn.addEventListener("click", async () => {
+  await checkXhsStatus();
+});
+
 async function init() {
   await loadChats();
+  updateSelectedInfo();
+  renderPublishPreview(null);
+  await checkXhsStatus();
   await search();
 }
 

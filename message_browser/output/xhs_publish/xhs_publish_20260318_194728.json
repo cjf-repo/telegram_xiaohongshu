@@ -1,0 +1,114 @@
+{
+  "source": "message_browser",
+  "generated_at": "2026-03-18 19:47:28",
+  "product_url": "httpsdsdaada",
+  "title": "款号：1102#套装\n批价：88¥\n颜色：灰色 蓝色\n码数：S/M",
+  "description": "款号：1102#套装\n批价：88¥\n颜色：灰色 蓝色\n码数：S/M",
+  "group_count": 1,
+  "message_id_count": 10,
+  "message_ids": [
+    16434,
+    16435,
+    16436,
+    16437,
+    16438,
+    16439,
+    16440,
+    16441,
+    16442,
+    16443
+  ],
+  "media_count": 10,
+  "media_assets": [
+    {
+      "chat_id": "-1003557619963",
+      "anchor_message_id": 16434,
+      "message_id": 16434,
+      "media_type": "photo",
+      "saved_file_path": "/mnt/e/telegram_media_downloader/Y.JIA伊嘉STUDIO （批发频道）/2026_03/16434 - AgAD7Q1rG83_0VU.jpg",
+      "original_file_name": null
+    },
+    {
+      "chat_id": "-1003557619963",
+      "anchor_message_id": 16434,
+      "message_id": 16435,
+      "media_type": "photo",
+      "saved_file_path": "/mnt/e/telegram_media_downloader/Y.JIA伊嘉STUDIO （批发频道）/2026_03/16435 - AgAD7g1rG83_0VU.jpg",
+      "original_file_name": null
+    },
+    {
+      "chat_id": "-1003557619963",
+      "anchor_message_id": 16434,
+      "message_id": 16436,
+      "media_type": "photo",
+      "saved_file_path": "/mnt/e/telegram_media_downloader/Y.JIA伊嘉STUDIO （批发频道）/2026_03/16436 - AgAD7w1rG83_0VU.jpg",
+      "original_file_name": null
+    },
+    {
+      "chat_id": "-1003557619963",
+      "anchor_message_id": 16434,
+      "message_id": 16437,
+      "media_type": "photo",
+      "saved_file_path": "/mnt/e/telegram_media_downloader/Y.JIA伊嘉STUDIO （批发频道）/2026_03/16437 - AgAD8A1rG83_0VU.jpg",
+      "original_file_name": null
+    },
+    {
+      "chat_id": "-1003557619963",
+      "anchor_message_id": 16434,
+      "message_id": 16438,
+      "media_type": "photo",
+      "saved_file_path": "/mnt/e/telegram_media_downloader/Y.JIA伊嘉STUDIO （批发频道）/2026_03/16438 - AgAD8Q1rG83_0VU.jpg",
+      "original_file_name": null
+    },
+    {
+      "chat_id": "-1003557619963",
+      "anchor_message_id": 16434,
+      "message_id": 16439,
+      "media_type": "photo",
+      "saved_file_path": "/mnt/e/telegram_media_downloader/Y.JIA伊嘉STUDIO （批发频道）/2026_03/16439 - AgAD8g1rG83_0VU.jpg",
+      "original_file_name": null
+    },
+    {
+      "chat_id": "-1003557619963",
+      "anchor_message_id": 16434,
+      "message_id": 16440,
+      "media_type": "photo",
+      "saved_file_path": "/mnt/e/telegram_media_downloader/Y.JIA伊嘉STUDIO （批发频道）/2026_03/16440 - AgAD8w1rG83_0VU.jpg",
+      "original_file_name": null
+    },
+    {
+      "chat_id": "-1003557619963",
+      "anchor_message_id": 16434,
+      "message_id": 16441,
+      "media_type": "photo",
+      "saved_file_path": "/mnt/e/telegram_media_downloader/Y.JIA伊嘉STUDIO （批发频道）/2026_03/16441 - AgAD9A1rG83_0VU.jpg",
+      "original_file_name": null
+    },
+    {
+      "chat_id": "-1003557619963",
+      "anchor_message_id": 16434,
+      "message_id": 16442,
+      "media_type": "photo",
+      "saved_file_path": "/mnt/e/telegram_media_downloader/Y.JIA伊嘉STUDIO （批发频道）/2026_03/16442 - AgAD9Q1rG83_0VU.jpg",
+      "original_file_name": null
+    },
+    {
+      "chat_id": "-1003557619963",
+      "anchor_message_id": 16434,
+      "message_id": 16443,
+      "media_type": "photo",
+      "saved_file_path": "/mnt/e/telegram_media_downloader/Y.JIA伊嘉STUDIO （批发频道）/2026_03/16443 - AgADcQ1rG83_0VU.jpg",
+      "original_file_name": null
+    }
+  ],
+  "groups": [
+    {
+      "chat_id": "-1003557619963",
+      "anchor_message_id": 16434,
+      "first_message_id": 16434,
+      "latest_message_id": 16443,
+      "group_caption": "款号：1102#套装\n批价：88¥\n颜色：灰色 蓝色\n码数：S/M",
+      "media_count": 10
+    }
+  ]
+}

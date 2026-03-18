@@ -106,6 +106,109 @@ body {
   font-size: 13px;
 }
 
+.publish-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.publish-row {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.publish-row label {
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  color: var(--sub);
+  gap: 4px;
+}
+
+.publish-row input {
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 10px;
+}
+
+.publish-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.publish-actions button {
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.publish-actions #publishBtn {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+}
+
+#xhsStatus {
+  font-size: 12px;
+  color: var(--sub);
+}
+
+#publishPreviewPanel h3 {
+  margin: 0 0 10px;
+  font-size: 16px;
+}
+
+.publish-preview-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+
+.publish-preview-desc {
+  white-space: pre-wrap;
+  font-size: 13px;
+  color: var(--sub);
+  margin: 0 0 10px;
+}
+
+.publish-preview-grid {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+
+.publish-preview-item {
+  flex: 0 0 180px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px;
+  background: #fff;
+}
+
+.publish-preview-item img,
+.publish-preview-item video {
+  width: 100%;
+  max-height: 150px;
+  object-fit: cover;
+  border-radius: 6px;
+  background: #eef2f6;
+}
+
+.publish-preview-meta {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--sub);
+  word-break: break-all;
+}
+
 .result {
   display: grid;
   gap: 12px;
@@ -127,6 +230,14 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 8px 14px;
+}
+
+.group-select-label {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
 }
 
 .group-body {
@@ -248,5 +359,9 @@ body {
 
   .filters {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .publish-row {
+    grid-template-columns: 1fr;
   }
 }

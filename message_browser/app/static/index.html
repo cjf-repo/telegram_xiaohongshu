@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Message Browser</title>
-    <link rel="stylesheet" href="/static/style.css" />
+    <link rel="stylesheet" href="/static/style.css?v=20260318_01" />
   </head>
   <body>
     <header class="topbar">
@@ -61,6 +61,37 @@
       </section>
 
       <section class="panel info" id="summary"></section>
+
+      <section class="panel publish-panel">
+        <div class="publish-row">
+          <label>
+            商品链接(可选)
+            <input id="productUrl" type="text" placeholder="https://www.xiaohongshu.com/..." />
+          </label>
+          <label>
+            发布标题(可选)
+            <input id="publishTitle" type="text" placeholder="不填则自动用分组caption" />
+          </label>
+          <label class="checkbox">
+            <input id="publishIncludeSeparator" type="checkbox" />
+            发布时包含分隔图
+          </label>
+        </div>
+        <div class="publish-actions">
+          <span id="selectedInfo">已选分组: 0</span>
+          <span id="xhsStatus">XHS状态: 未检查</span>
+          <button id="checkXhsBtn" type="button">检查XHS状态</button>
+          <button id="previewPublishBtn" type="button">预览融合</button>
+          <button id="publishBtn" type="button">提交上架</button>
+          <button id="clearSelectedBtn" type="button">清空选择</button>
+        </div>
+      </section>
+
+      <section class="panel" id="publishPreviewPanel">
+        <h3>融合预览</h3>
+        <div id="publishPreviewBody" class="empty-text">尚未生成预览</div>
+      </section>
+
       <section id="result" class="result"></section>
 
       <section class="panel pager">
@@ -70,6 +101,6 @@
       </section>
     </main>
 
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js?v=20260318_01"></script>
   </body>
 </html>

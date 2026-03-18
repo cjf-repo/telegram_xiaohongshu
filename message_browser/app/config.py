@@ -48,6 +48,20 @@ class Settings:
     sqlite_path: str
     media_roots: List[str]
 
+    xhs_publish_mode: str
+    xhs_webhook_url: str
+    xhs_webhook_token: str
+    xhs_timeout: int
+    xhs_output_dir: str
+    xhs_creator_url: str
+    xhs_user_data_dir: str
+    xhs_auto_click_publish: bool
+    xhs_publish_button_text: str
+    xhs_wait_timeout_ms: int
+    xhs_proxy_server: str
+    xhs_proxy_username: str
+    xhs_proxy_password: str
+
     @property
     def messages_table(self) -> str:
         return f"`{self.db_table_prefix}messages`"
@@ -92,4 +106,29 @@ def load_settings() -> Settings:
         mysql_charset=os.getenv("MYSQL_CHARSET", "utf8mb4").strip(),
         sqlite_path=sqlite_path,
         media_roots=[str(Path(p).resolve()) for p in _to_list(os.getenv("MEDIA_ROOTS", ""))],
+        xhs_publish_mode=os.getenv("XHS_PUBLISH_MODE", "mock").strip().lower(),
+        xhs_webhook_url=os.getenv("XHS_WEBHOOK_URL", "").strip(),
+        xhs_webhook_token=os.getenv("XHS_WEBHOOK_TOKEN", "").strip(),
+        xhs_timeout=_to_int(os.getenv("XHS_TIMEOUT"), 20),
+        xhs_output_dir=str(
+            (
+                Path(__file__).resolve().parent.parent
+                / os.getenv("XHS_OUTPUT_DIR", "./output/xhs_publish")
+            ).resolve()
+        ),
+        xhs_creator_url=os.getenv(
+            "XHS_CREATOR_URL", "https://creator.xiaohongshu.com/publish/publish"
+        ).strip(),
+        xhs_user_data_dir=str(
+            (
+                Path(__file__).resolve().parent.parent
+                / os.getenv("XHS_USER_DATA_DIR", "./browser_data")
+            ).resolve()
+        ),
+        xhs_auto_click_publish=_to_bool(os.getenv("XHS_AUTO_CLICK_PUBLISH"), False),
+        xhs_publish_button_text=os.getenv("XHS_PUBLISH_BUTTON_TEXT", "发布").strip(),
+        xhs_wait_timeout_ms=_to_int(os.getenv("XHS_WAIT_TIMEOUT_MS"), 90000),
+        xhs_proxy_server=os.getenv("XHS_PROXY_SERVER", "").strip(),
+        xhs_proxy_username=os.getenv("XHS_PROXY_USERNAME", "").strip(),
+        xhs_proxy_password=os.getenv("XHS_PROXY_PASSWORD", "").strip(),
     )

@@ -1,19 +1,24 @@
 """FastAPI app for browsing telegram media/text index data."""
 
+import json
 import mimetypes
 from collections import OrderedDict
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.error import HTTPError, URLError
 from urllib.parse import unquote
+from urllib.request import Request, urlopen
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import AnyHttpUrl, BaseModel, Field
 
 from .config import load_settings
 from .db import Database
+from .xhs_publisher import PlaywrightXHSPublisher, check_xhs_login_data
 
 settings = load_settings()
 db = Database(settings)
@@ -30,6 +35,23 @@ app.add_middleware(
     allow_credentials=False,
 )
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+
+class PublishGroupRef(BaseModel):
+    """Selected group reference."""
+
+    chat_id: str = Field(..., description="chat_id")
+    anchor_message_id: int = Field(..., description="group anchor message id")
+
+
+class XHSPublishRequest(BaseModel):
+    """Publish request."""
+
+    groups: List[PublishGroupRef] = Field(default_factory=list)
+    product_url: Optional[AnyHttpUrl] = None
+    title: Optional[str] = Field(default=None, max_length=200)
+    description: Optional[str] = Field(default=None, max_length=5000)
+    include_separator: bool = False
 
 
 def _parse_date(date_value: Optional[str], end_of_day: bool = False) -> Optional[str]:
@@ -317,6 +339,180 @@ def _fetch_groups_by_pairs(
     return items
 
 
+def _dedupe_keep_order(values: List[Any]) -> List[Any]:
+    result: List[Any] = []
+    seen = set()
+    for value in values:
+        marker = json.dumps(value, ensure_ascii=False, sort_keys=True)
+        if marker in seen:
+            continue
+        seen.add(marker)
+        result.append(value)
+    return result
+
+
+def _build_xhs_payload(groups: List[Dict[str, Any]], req: XHSPublishRequest) -> Dict[str, Any]:
+    """Build merged payload from selected groups."""
+    captions: List[str] = []
+    text_blocks: List[str] = []
+    media_assets: List[Dict[str, Any]] = []
+    all_message_ids: List[int] = []
+
+    for group in groups:
+        caption = (group.get("group_caption") or group.get("primary_text") or "").strip()
+        if caption:
+            captions.append(caption)
+
+        if caption:
+            text_blocks.append(caption)
+        for txt in group.get("text_messages", []):
+            val = (txt.get("text") or "").strip()
+            if val and val != caption:
+                text_blocks.append(val)
+
+        for media in group.get("media_items", []):
+            saved_path = (media.get("saved_file_path") or "").strip()
+            if not saved_path:
+                continue
+            media_assets.append(
+                {
+                    "chat_id": str(group.get("chat_id")),
+                    "anchor_message_id": int(group.get("anchor_message_id")),
+                    "message_id": int(media.get("message_id") or 0),
+                    "media_type": media.get("media_type"),
+                    "saved_file_path": saved_path,
+                    "original_file_name": media.get("original_file_name"),
+                }
+            )
+
+        for mid in group.get("message_ids", []):
+            try:
+                all_message_ids.append(int(mid))
+            except (TypeError, ValueError):
+                continue
+
+    media_assets = _dedupe_keep_order(media_assets)
+    text_blocks = _dedupe_keep_order([it for it in text_blocks if it])
+    message_ids = sorted(set(all_message_ids))
+
+    auto_title = ""
+    if captions:
+        auto_title = captions[0][:60]
+    elif text_blocks:
+        auto_title = text_blocks[0][:60]
+
+    title = (req.title or "").strip() or auto_title or "自动上架商品"
+    description = (req.description or "").strip() or "\n\n".join(text_blocks)[:5000]
+
+    return {
+        "source": "message_browser",
+        "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "product_url": str(req.product_url) if req.product_url else "",
+        "title": title,
+        "description": description,
+        "group_count": len(groups),
+        "message_id_count": len(message_ids),
+        "message_ids": message_ids,
+        "media_count": len(media_assets),
+        "media_assets": media_assets,
+        "groups": [
+            {
+                "chat_id": str(group.get("chat_id")),
+                "anchor_message_id": int(group.get("anchor_message_id")),
+                "first_message_id": int(group.get("first_message_id") or 0),
+                "latest_message_id": int(group.get("latest_message_id") or 0),
+                "group_caption": group.get("group_caption") or "",
+                "media_count": len(group.get("media_items", [])),
+            }
+            for group in groups
+        ],
+    }
+
+
+def _send_xhs_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Send payload by mode."""
+    mode = (settings.xhs_publish_mode or "mock").lower()
+    if mode == "mock":
+        out_dir = Path(settings.xhs_output_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        file_name = f"xhs_publish_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        out_file = out_dir / file_name
+        out_file.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        return {
+            "mode": "mock",
+            "saved_file": str(out_file),
+        }
+
+    if mode == "webhook":
+        webhook_url = settings.xhs_webhook_url.strip()
+        if not webhook_url:
+            raise HTTPException(
+                status_code=400,
+                detail="XHS_WEBHOOK_URL 未配置，无法使用 webhook 模式",
+            )
+
+        headers = {"Content-Type": "application/json; charset=utf-8"}
+        if settings.xhs_webhook_token:
+            headers["Authorization"] = f"Bearer {settings.xhs_webhook_token}"
+
+        request = Request(
+            webhook_url,
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        try:
+            with urlopen(request, timeout=max(settings.xhs_timeout, 1)) as response:
+                body = response.read().decode("utf-8", errors="ignore")
+                return {
+                    "mode": "webhook",
+                    "status_code": response.status,
+                    "response": body[:2000],
+                }
+        except HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="ignore")
+            raise HTTPException(
+                status_code=502,
+                detail=f"Webhook HTTPError {exc.code}: {body[:500]}",
+            ) from exc
+        except URLError as exc:
+            raise HTTPException(status_code=502, detail=f"Webhook 请求失败: {exc}") from exc
+
+    if mode == "playwright":
+        publisher = PlaywrightXHSPublisher(
+            creator_url=settings.xhs_creator_url,
+            user_data_dir=settings.xhs_user_data_dir,
+            auto_click_publish=settings.xhs_auto_click_publish,
+            publish_button_text=settings.xhs_publish_button_text,
+            wait_timeout_ms=settings.xhs_wait_timeout_ms,
+            proxy_server=settings.xhs_proxy_server,
+            proxy_username=settings.xhs_proxy_username,
+            proxy_password=settings.xhs_proxy_password,
+        )
+        publish_body = payload.get("description") or ""
+        product_url = payload.get("product_url") or ""
+        if product_url and str(product_url) not in publish_body:
+            publish_body = f"{publish_body}\n\n商品链接：{product_url}".strip()
+
+        result = publisher.publish(
+            title=str(payload.get("title") or "自动上架商品"),
+            body=publish_body,
+            media_paths=[it.get("saved_file_path") for it in payload.get("media_assets", [])],
+        )
+        if not result.success:
+            raise HTTPException(status_code=400, detail=result.error or "发布失败")
+        return {
+            "mode": "playwright",
+            "note_id": result.note_id,
+            "note_url": result.note_url,
+        }
+
+    raise HTTPException(status_code=400, detail=f"不支持的 XHS_PUBLISH_MODE: {mode}")
+
+
 @app.get("/")
 def index():
     """Serve SPA page."""
@@ -460,6 +656,83 @@ def get_group(chat_id: str, anchor_message_id: int):
     if items:
         return items[0]
     raise HTTPException(status_code=404, detail="分组不存在")
+
+
+@app.post("/api/xhs/publish/preview")
+def preview_xhs_publish(req: XHSPublishRequest):
+    """Preview merged payload for xhs publish."""
+    if not req.groups:
+        raise HTTPException(status_code=400, detail="请至少选择一个分组")
+
+    anchor_pairs = _dedupe_keep_order(
+        [(str(group.chat_id), int(group.anchor_message_id)) for group in req.groups]
+    )
+    groups = _fetch_groups_by_pairs(
+        anchor_pairs=anchor_pairs,
+        include_separator=req.include_separator,
+        summary_by_pair=None,
+    )
+    if not groups:
+        raise HTTPException(status_code=404, detail="未找到选中的分组数据")
+
+    payload = _build_xhs_payload(groups, req)
+    return {
+        "ok": True,
+        "mode": settings.xhs_publish_mode,
+        "payload": payload,
+    }
+
+
+@app.post("/api/xhs/publish")
+def publish_to_xhs(req: XHSPublishRequest):
+    """Publish merged data to xhs adapter."""
+    if not req.groups:
+        raise HTTPException(status_code=400, detail="请至少选择一个分组")
+
+    anchor_pairs = _dedupe_keep_order(
+        [(str(group.chat_id), int(group.anchor_message_id)) for group in req.groups]
+    )
+    groups = _fetch_groups_by_pairs(
+        anchor_pairs=anchor_pairs,
+        include_separator=req.include_separator,
+        summary_by_pair=None,
+    )
+    if not groups:
+        raise HTTPException(status_code=404, detail="未找到选中的分组数据")
+
+    payload = _build_xhs_payload(groups, req)
+    publish_result = _send_xhs_payload(payload)
+    return {
+        "ok": True,
+        "publish_result": publish_result,
+        "summary": {
+            "group_count": payload["group_count"],
+            "message_id_count": payload["message_id_count"],
+            "media_count": payload["media_count"],
+            "title": payload["title"],
+        },
+    }
+
+
+@app.get("/api/xhs/status")
+def xhs_status():
+    """Check xhs integration status."""
+    mode = (settings.xhs_publish_mode or "mock").lower()
+    status = {
+        "mode": mode,
+        "creator_url": settings.xhs_creator_url,
+        "user_data_dir": settings.xhs_user_data_dir,
+        "auto_click_publish": settings.xhs_auto_click_publish,
+        "proxy_enabled": bool(settings.xhs_proxy_server),
+        "ok": True,
+        "message": "mock/webhook 模式无需本地登录态",
+    }
+    if mode == "playwright":
+        login_status = check_xhs_login_data(settings.xhs_user_data_dir)
+        status["ok"] = bool(login_status.get("ok"))
+        status["message"] = login_status.get("message")
+        status["login_command"] = "python scripts/xhs_login.py"
+    return status
 
 
 def _check_path_allowed(target: Path) -> bool:
