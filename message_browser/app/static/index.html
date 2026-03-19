@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Message Browser</title>
-    <link rel="stylesheet" href="/static/style.css?v=20260318_02" />
+    <link rel="stylesheet" href="/static/style.css?v=20260319_06" />
   </head>
   <body>
     <header class="topbar">
@@ -77,6 +77,16 @@
             发布时包含分隔图
           </label>
         </div>
+        <div class="publish-row publish-row-desc">
+          <label>
+            发布文案(可选)
+            <textarea
+              id="publishDescription"
+              rows="4"
+              placeholder="不填则自动使用分组文本。可结合AI生成结果后再手动微调。"
+            ></textarea>
+          </label>
+        </div>
         <div class="publish-actions">
           <span id="selectedInfo">已选分组: 0</span>
           <span id="xhsStatus">XHS状态: 未检查</span>
@@ -92,6 +102,89 @@
         <div id="publishPreviewBody" class="empty-text">尚未生成预览</div>
       </section>
 
+      <section class="panel" id="aiCopyPanel">
+        <h3>AI爆款文案</h3>
+        <div class="publish-row publish-row-desc">
+          <label>
+            Prompt(可编辑)
+            <textarea id="aiPrompt" rows="5">
+你将收到商品文本与图片信息，请直接生成“小红书种草文案包”。
+不要反问用户，不要分步骤等待确认，自动完成决策。
+
+【自动决策要求】
+1. 自动识别赛道、人群、痛点、购买动机。
+2. 在5种风格中自动选择主风格并给出2个备选：幽默、科普、情感共鸣、实用、分享。
+3. 在5种框架中自动选择最优1个：真实体验分享、专业测评、故事情境带入、数据支撑、使用教程。
+4. 生成5个可选标题（20字以内，带emoji，情绪钩子强）。
+5. 生成1篇主文案（约500字，口语化、接地气、分段清晰、有行动引导）。
+6. 再生成2篇不同风格短文案（每篇120-180字）用于A/B测试。
+
+【价格策略（重点）】
+1. 若输入中出现“批价/进价/拿货价/成本价”，将其视为进货成本价，不是对外售价。
+2. 默认按包邮测算：快递成本约15元，目标净利润仅5-10元（薄利走量）。
+3. 因此包邮建议售价区间=成本+20 到 成本+25；若明确不包邮，则建议售价区间=成本+5 到 成本+10。
+4. 若建议价刚好是整百（100/200/300），优先改为99/199/299心理价；但必须保证净利润仍>=5元，若不足则改为满足利润的x9价格（如109/209）。
+5. 价格表达要自然，适合小红书交易场景，给“建议到手价”与“活动价”两档，整体偏亲民以提高成交。
+6. 严禁在最终标题和文案正文里出现成本价、进货价、批价、利润等内部信息；对外只表达包邮卖价/活动价。
+7. 若标题中出现价格数字，该价格必须使用对外活动价或建议售价，不能出现接近成本价的数字。
+
+【合规与真实性】
+- 忠于输入信息，不编造未提供的参数、功效或资质。
+- 避免绝对化、医疗化、极限词；必要时用拼音或emoji柔化敏感表达。
+- 可以适度夸张语气，但不得脱离商品实际。
+
+【输出格式】
+必须只输出JSON对象，不要markdown，不要额外解释。
+字段要求：
+{
+  "title": "主标题（从titles中选最优）",
+  "content": "主文案（约500字）",
+  "highlights": ["核心卖点1","核心卖点2","核心卖点3"],
+  "hashtags": ["#标签1","#标签2","#标签3","#标签4","#标签5"],
+  "strategy": {
+    "track": "识别出的赛道",
+    "audience": "目标人群",
+    "main_style": "主风格",
+    "backup_styles": ["备选风格1","备选风格2"],
+    "framework": "采用框架",
+    "reason": "选择理由"
+  },
+  "pricing": {
+    "cost_price_detected": 0,
+    "recommended_price": 0,
+    "event_price": 0,
+    "pricing_note": "定价逻辑说明"
+  },
+  "titles": ["标题1","标题2","标题3","标题4","标题5"],
+  "style_variants": [
+    {"style":"风格A","title":"标题A","content":"短文案A"},
+    {"style":"风格B","title":"标题B","content":"短文案B"}
+  ]
+}</textarea
+            >
+          </label>
+        </div>
+        <div class="publish-actions">
+          <span id="aiStatus">AI状态: 未检查</span>
+          <label class="checkbox">
+            <input id="aiUseVision" type="checkbox" checked />
+            结合图片理解
+          </label>
+          <label>
+            最多图片
+            <input id="aiMaxImages" type="number" min="0" max="12" value="4" />
+          </label>
+          <label>
+            温度
+            <input id="aiTemperature" type="number" min="0" max="2" step="0.1" value="0.7" />
+          </label>
+          <button id="checkAiBtn" type="button">检查AI状态</button>
+          <button id="aiGenerateBtn" type="button">生成爆款文案</button>
+          <button id="aiApplyBtn" type="button">应用到上架输入</button>
+        </div>
+        <div id="aiResultBody" class="empty-text">尚未生成AI文案</div>
+      </section>
+
       <section id="result" class="result"></section>
 
       <section class="panel pager">
@@ -101,6 +194,6 @@
       </section>
     </main>
 
-    <script src="/static/app.js?v=20260318_02"></script>
+    <script src="/static/app.js?v=20260319_06"></script>
   </body>
 </html>

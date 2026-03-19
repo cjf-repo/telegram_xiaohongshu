@@ -453,8 +453,11 @@ class MessageIndexDB:
                         telegram_file_id=excluded.telegram_file_id,
                         telegram_file_unique_id=excluded.telegram_file_unique_id,
                         original_file_name=excluded.original_file_name,
-                        saved_file_path=excluded.saved_file_path,
-                        saved_file_size=excluded.saved_file_size,
+                        saved_file_path=COALESCE(NULLIF(excluded.saved_file_path, ''), saved_file_path),
+                        saved_file_size=CASE
+                            WHEN COALESCE(NULLIF(excluded.saved_file_path, ''), '') = '' THEN saved_file_size
+                            ELSE excluded.saved_file_size
+                        END,
                         download_status=excluded.download_status,
                         updated_at=excluded.updated_at
                     """,
@@ -568,8 +571,12 @@ class MessageIndexDB:
                             telegram_file_id=VALUES(telegram_file_id),
                             telegram_file_unique_id=VALUES(telegram_file_unique_id),
                             original_file_name=VALUES(original_file_name),
-                            saved_file_path=VALUES(saved_file_path),
-                            saved_file_size=VALUES(saved_file_size),
+                            saved_file_path=IFNULL(NULLIF(VALUES(saved_file_path), ''), saved_file_path),
+                            saved_file_size=IF(
+                                IFNULL(NULLIF(VALUES(saved_file_path), ''), '') = '',
+                                saved_file_size,
+                                VALUES(saved_file_size)
+                            ),
                             download_status=VALUES(download_status),
                             updated_at=VALUES(updated_at)
                         """,

@@ -419,13 +419,19 @@ async def download_media(
             if _can_download(_type, file_formats, file_format):
                 if _is_exist(file_name):
                     file_size = os.path.getsize(file_name)
-                    if file_size or file_size == media_size:
+                    # If Telegram reports size, only skip when size matches.
+                    # Otherwise fallback to "file exists" skip.
+                    if (media_size and file_size == media_size) or (not media_size):
                         logger.info(
                             f"id={message.id} {ui_file_name} "
                             f"{_t('already download,download skipped')}.\n"
                         )
-
-                        return DownloadStatus.SkipDownload, None
+                        # Keep file path for DB index upsert.
+                        return DownloadStatus.SkipDownload, file_name
+                    logger.warning(
+                        f"id={message.id} {ui_file_name} "
+                        f"size mismatch(local={file_size}, tg={media_size}), retry download"
+                    )
             else:
                 return DownloadStatus.SkipDownload, None
 

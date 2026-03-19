@@ -133,6 +133,20 @@ body {
   padding: 0 10px;
 }
 
+.publish-row textarea {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 14px;
+  resize: vertical;
+  min-height: 80px;
+  font-family: inherit;
+}
+
+.publish-row-desc {
+  grid-template-columns: 1fr;
+}
+
 .publish-actions {
   display: flex;
   gap: 8px;
@@ -149,6 +163,22 @@ body {
   cursor: pointer;
 }
 
+.publish-actions label {
+  font-size: 12px;
+  color: var(--sub);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.publish-actions label input[type="number"] {
+  width: 80px;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0 8px;
+}
+
 .publish-actions #publishBtn {
   background: var(--brand);
   border-color: var(--brand);
@@ -158,6 +188,21 @@ body {
 #xhsStatus {
   font-size: 12px;
   color: var(--sub);
+}
+
+#aiStatus {
+  font-size: 12px;
+  color: var(--sub);
+}
+
+#aiResultBody {
+  margin-top: 10px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 #publishPreviewPanel h3 {

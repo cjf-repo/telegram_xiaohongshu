@@ -4,7 +4,9 @@ const state = {
   totalPages: 1,
   total: 0,
   selectedGroupKeys: new Set(),
+  aiResult: null,
 };
+const XHS_TITLE_MAX = 20;
 
 const els = {
   filterForm: document.getElementById("filterForm"),
@@ -22,6 +24,7 @@ const els = {
   pageInfo: document.getElementById("pageInfo"),
   productUrl: document.getElementById("productUrl"),
   publishTitle: document.getElementById("publishTitle"),
+  publishDescription: document.getElementById("publishDescription"),
   publishIncludeSeparator: document.getElementById("publishIncludeSeparator"),
   selectedInfo: document.getElementById("selectedInfo"),
   previewPublishBtn: document.getElementById("previewPublishBtn"),
@@ -30,6 +33,15 @@ const els = {
   publishPreviewBody: document.getElementById("publishPreviewBody"),
   xhsStatus: document.getElementById("xhsStatus"),
   checkXhsBtn: document.getElementById("checkXhsBtn"),
+  aiPrompt: document.getElementById("aiPrompt"),
+  aiUseVision: document.getElementById("aiUseVision"),
+  aiMaxImages: document.getElementById("aiMaxImages"),
+  aiTemperature: document.getElementById("aiTemperature"),
+  aiStatus: document.getElementById("aiStatus"),
+  checkAiBtn: document.getElementById("checkAiBtn"),
+  aiGenerateBtn: document.getElementById("aiGenerateBtn"),
+  aiApplyBtn: document.getElementById("aiApplyBtn"),
+  aiResultBody: document.getElementById("aiResultBody"),
 };
 
 function escapeHtml(text) {
@@ -82,6 +94,12 @@ function updateSelectedInfo() {
   els.selectedInfo.textContent = `已选分组: ${state.selectedGroupKeys.size}`;
 }
 
+function normalizePublishTitle(text) {
+  const raw = (text || "").replace(/\s+/g, " ").trim();
+  if (!raw) return "";
+  return raw.slice(0, XHS_TITLE_MAX);
+}
+
 function buildQuery() {
   const params = new URLSearchParams();
   if (els.chatId.value) params.set("chat_id", els.chatId.value);
@@ -120,6 +138,19 @@ async function checkXhsStatus() {
     els.xhsStatus.textContent = `XHS状态(${mode}): ${ok ? "就绪" : "未就绪"} - ${message}${loginCommand}`;
   } catch (err) {
     els.xhsStatus.textContent = `XHS状态: 检查失败 - ${err.message || err}`;
+  }
+}
+
+async function checkAiStatus() {
+  els.aiStatus.textContent = "AI状态: 检查中...";
+  try {
+    const res = await fetch("/api/ai/status");
+    const data = await res.json();
+    const ready = !!data.ready;
+    const modelPart = `text=${data.text_model || "-"}, vision=${data.vision_model || "-"}`;
+    els.aiStatus.textContent = `AI状态: ${ready ? "就绪" : "未就绪"} - ${data.message || "-"} (${modelPart})`;
+  } catch (err) {
+    els.aiStatus.textContent = `AI状态: 检查失败 - ${err.message || err}`;
   }
 }
 
@@ -178,6 +209,50 @@ function renderPublishPreview(payload) {
       媒体 ${payload.media_count || 0}
     </p>
     <div class="publish-preview-grid">${mediaHtml || '<div class="empty-text">无媒体</div>'}</div>
+  `;
+}
+
+function renderAICopyResult(result) {
+  state.aiResult = result || null;
+  if (!result) {
+    els.aiResultBody.innerHTML = '<div class="empty-text">尚未生成AI文案</div>';
+    return;
+  }
+  const title = escapeHtml(result.title || "-");
+  const content = escapeHtml(result.content || "");
+  const highlights = Array.isArray(result.highlights) ? result.highlights : [];
+  const hashtags = Array.isArray(result.hashtags) ? result.hashtags : [];
+  const pricing = result.pricing && typeof result.pricing === "object" ? result.pricing : {};
+  const strategy = result.strategy && typeof result.strategy === "object" ? result.strategy : {};
+  const extraTitles = Array.isArray(result.titles) ? result.titles : [];
+  const highlightsHtml = highlights.length
+    ? `<p><strong>卖点:</strong> ${escapeHtml(highlights.join(" / "))}</p>`
+    : "";
+  const hashtagsHtml = hashtags.length
+    ? `<p><strong>标签:</strong> ${escapeHtml(hashtags.join(" "))}</p>`
+    : "";
+  const pricingHtml = (pricing.recommended_price || pricing.event_price || pricing.pricing_note)
+    ? `<p><strong>建议售价:</strong> ${escapeHtml(String(pricing.recommended_price || "-"))}，<strong>活动价:</strong> ${escapeHtml(String(pricing.event_price || "-"))}</p>
+       <p><strong>定价说明:</strong> ${escapeHtml(String(pricing.pricing_note || "-"))}</p>`
+    : "";
+  const strategyHtml = (strategy.main_style || strategy.framework || strategy.reason)
+    ? `<p><strong>主风格:</strong> ${escapeHtml(String(strategy.main_style || "-"))}，<strong>框架:</strong> ${escapeHtml(String(strategy.framework || "-"))}</p>
+       <p><strong>策略说明:</strong> ${escapeHtml(String(strategy.reason || "-"))}</p>`
+    : "";
+  const extraTitlesHtml = extraTitles.length
+    ? `<p><strong>备选标题:</strong> ${escapeHtml(extraTitles.join(" ｜ "))}</p>`
+    : "";
+  const meta = `模型: ${escapeHtml(result.model || "-")} | 视觉: ${result.used_vision ? "是" : "否"} | 图片: ${result.used_image_count || 0}`;
+  els.aiResultBody.innerHTML = `
+    <p><strong>标题建议:</strong> ${title}</p>
+    <p><strong>文案建议:</strong></p>
+    <p>${content || "<span class='empty-text'>无内容</span>"}</p>
+    ${highlightsHtml}
+    ${hashtagsHtml}
+    ${pricingHtml}
+    ${strategyHtml}
+    ${extraTitlesHtml}
+    <p class="empty-text">${meta}</p>
   `;
 }
 
@@ -297,10 +372,15 @@ async function requestPublish(apiPath) {
     alert("商品链接格式错误，请使用 http/https 完整链接");
     return;
   }
+  const normalizedTitle = normalizePublishTitle(els.publishTitle.value || "");
+  if (normalizedTitle !== (els.publishTitle.value || "").trim()) {
+    els.publishTitle.value = normalizedTitle;
+  }
   const body = {
     groups,
     product_url: productUrl || null,
-    title: (els.publishTitle.value || "").trim() || null,
+    title: normalizedTitle || null,
+    description: (els.publishDescription.value || "").trim() || null,
     include_separator: !!els.publishIncludeSeparator.checked,
   };
 
@@ -321,6 +401,47 @@ async function requestPublish(apiPath) {
   }
   if (!res.ok) {
     const detail = (data && data.detail) || "请求失败";
+    throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+  }
+  return data;
+}
+
+async function requestAICopy() {
+  const groups = selectedGroupList();
+  if (groups.length === 0) {
+    els.summary.textContent = "请先勾选至少一个分组";
+    alert("请先勾选至少一个分组");
+    return;
+  }
+
+  const maxImagesNum = Number(els.aiMaxImages.value);
+  const temperatureNum = Number(els.aiTemperature.value);
+  const body = {
+    groups,
+    include_separator: !!els.publishIncludeSeparator.checked,
+    prompt: (els.aiPrompt.value || "").trim() || null,
+    use_vision: !!els.aiUseVision.checked,
+    max_images: Number.isFinite(maxImagesNum) ? maxImagesNum : null,
+    temperature: Number.isFinite(temperatureNum) ? temperatureNum : null,
+  };
+
+  const res = await fetch("/api/ai/copy/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const raw = await res.text();
+  let data = {};
+  try {
+    data = raw ? JSON.parse(raw) : {};
+  } catch {
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${raw.slice(0, 300) || "返回非JSON"}`);
+    }
+    data = {};
+  }
+  if (!res.ok) {
+    const detail = (data && data.detail) || "AI请求失败";
     throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
   }
   return data;
@@ -362,6 +483,7 @@ els.clearSelectedBtn.addEventListener("click", () => {
   state.selectedGroupKeys.clear();
   updateSelectedInfo();
   renderPublishPreview(null);
+  renderAICopyResult(null);
   els.summary.textContent = "已清空选择和预览";
   const checkboxes = els.result.querySelectorAll(".group-select");
   for (const checkbox of checkboxes) {
@@ -411,11 +533,55 @@ els.checkXhsBtn.addEventListener("click", async () => {
   await checkXhsStatus();
 });
 
+els.checkAiBtn.addEventListener("click", async () => {
+  await checkAiStatus();
+});
+
+els.aiGenerateBtn.addEventListener("click", async () => {
+  els.summary.textContent = "正在生成AI文案...";
+  try {
+    const data = await requestAICopy();
+    if (!data) return;
+    const result = data.result || {};
+    const summary = data.source_summary || {};
+    els.summary.textContent = `AI文案生成完成：分组 ${summary.group_count || 0}，消息 ${summary.message_id_count || 0}，媒体 ${summary.media_count || 0}`;
+    renderAICopyResult(result);
+  } catch (err) {
+    console.error(err);
+    els.summary.textContent = `AI文案生成失败: ${err.message || err}`;
+    renderAICopyResult(null);
+    alert(`AI文案生成失败: ${err.message}`);
+  }
+});
+
+els.aiApplyBtn.addEventListener("click", () => {
+  if (!state.aiResult) {
+    alert("请先生成AI文案");
+    return;
+  }
+  const aiTitle = (state.aiResult.title || "").trim();
+  const aiContent = (state.aiResult.content || "").trim();
+  if (aiTitle) els.publishTitle.value = normalizePublishTitle(aiTitle);
+  if (aiContent) els.publishDescription.value = aiContent;
+  els.summary.textContent = "已将AI文案应用到上架输入框，可继续手动微调";
+});
+
+els.publishTitle.addEventListener("input", () => {
+  const current = els.publishTitle.value || "";
+  const normalized = normalizePublishTitle(current);
+  if (current !== normalized) {
+    els.publishTitle.value = normalized;
+    els.summary.textContent = `发布标题最多 ${XHS_TITLE_MAX} 字，已自动截断`;
+  }
+});
+
 async function init() {
   await loadChats();
   updateSelectedInfo();
   renderPublishPreview(null);
+  renderAICopyResult(null);
   await checkXhsStatus();
+  await checkAiStatus();
   await search();
 }
 

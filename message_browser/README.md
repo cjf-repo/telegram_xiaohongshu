@@ -12,6 +12,7 @@
 - 分页浏览
 - 本地文件预览（图片/视频/其他文件下载）
 - 选中一个或多个分组，融合后提交“小红书上架”payload（`mock/webhook`）
+- 选中分组后基于“文本+图片”生成 AI 爆款文案（支持页面改 Prompt）
 
 ## 目录
 
@@ -87,6 +88,17 @@ XHS_WAIT_TIMEOUT_MS=90000
 XHS_PROXY_SERVER=
 XHS_PROXY_USERNAME=
 XHS_PROXY_PASSWORD=
+AI_ENABLED=true
+AI_API_KEY=
+AI_BASE_URL=https://api-inference.modelscope.cn/v1
+AI_TEXT_MODEL=Qwen/Qwen3-1.7B
+AI_VISION_MODEL=moonshotai/Kimi-K2.5
+AI_DEFAULT_USE_VISION=true
+AI_MAX_IMAGES=4
+AI_TEMPERATURE=0.7
+AI_TIMEOUT=120
+AI_SYSTEM_PROMPT=你是资深小红书电商文案策划，擅长将图文信息提炼为转化导向文案。
+AI_DEFAULT_PROMPT=请根据提供的商品文本和图片信息，生成适合上架前使用的爆款风格文案。输出严格JSON，字段包含title, content, highlights, hashtags。title控制在18-22字，content控制在120-220字，中文输出，不要编造未提供的商品参数。
 ```
 
 - `mock`：不调用外部服务，只把融合后的 JSON 写到 `XHS_OUTPUT_DIR`
@@ -140,6 +152,23 @@ XHS_PROXY_SERVER=http://172.25.80.1:7890
 ```
 
 然后重试 `python scripts/xhs_login.py`。
+
+## AI 文案生成
+
+页面新增了：
+
+- `Prompt(可编辑)` 输入框
+- `生成爆款文案` 按钮
+- `应用到上架输入` 按钮（将 AI 标题/文案回填到发布表单）
+
+建议流程：
+
+1. 勾选分组
+2. 点击 `生成爆款文案`
+3. 人工微调文案
+4. 点击 `提交上架`
+
+注意：`AI_API_KEY` 仅放在 `.env`，不要写死在代码里。
 
 ## 表要求
 

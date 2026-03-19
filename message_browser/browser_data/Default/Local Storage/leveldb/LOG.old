@@ -1,5 +1,3 @@
-2026/03/18-22:45:32.372 5eb9 Reusing MANIFEST /home/cjf/xhs_ai_publisher/telegram_media_downloader/message_browser/browser_data/Default/Local Storage/leveldb/MANIFEST-000001
-2026/03/18-22:45:32.378 5eb9 Recovering log #4
-2026/03/18-22:45:32.379 5eb9 Level-0 table #6: started
-2026/03/18-22:45:32.384 5eb9 Level-0 table #6: 18877 bytes OK
-2026/03/18-22:45:32.388 5eb9 Delete type=0 #4
+2026/03/19-11:48:50.163 4099 Reusing MANIFEST /home/cjf/xhs_ai_publisher/telegram_media_downloader/message_browser/browser_data/Default/Local Storage/leveldb/MANIFEST-000001
+2026/03/19-11:48:50.168 4099 Recovering log #7
+2026/03/19-11:48:50.169 4099 Reusing old log /home/cjf/xhs_ai_publisher/telegram_media_downloader/message_browser/browser_data/Default/Local Storage/leveldb/000007.log 
